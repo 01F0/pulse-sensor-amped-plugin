@@ -1,7 +1,7 @@
 This is a plugin for [OBS Studio] (https://obsproject.com/) that listens to data from [Pulse Sensor Amped] (http://pulsesensor.com/) using the serial data provided from the [Arduino example] (https://github.com/WorldFamousElectronics/PulseSensor_Amped_Arduino).
 The pulse sensor data is displayed as a component in OBS Studio. As for now, only the heart rate BPM is shown.
 
-Here's what it looks like:
+Here's what it looks like (a video can be found [here] (https://youtu.be/iX_Zih2sVhY):
 
 ![Heart rate in Bloodborne] (https://github.com/01F0/pulse-sensor-amped-plugin/blob/master/heart_rate_bloodborne_example.png)
 ## Build instructions
