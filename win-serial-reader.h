@@ -9,6 +9,7 @@
 #define BPM_TAG 'B'
 #define SIGNAL_TAG 'S'
 #define IBI_TAG 'Q'
+#define MAX_BPM 210
 
 bool open_com_port();
 

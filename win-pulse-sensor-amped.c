@@ -23,12 +23,13 @@ volatile struct pulse_data
 	volatile int bpm;
 	volatile int signal;
 	volatile int IBI;
+	int bpmTopRecord;
 };
 
 static const char *pulse_sensor_amped_get_name(void *unused)
 {
 	UNUSED_PARAMETER(unused);
-	return obs_module_text("Pulse Sensor Amped");
+	return obs_module_text("PulseSensorName");
 }
 
 static void pulse_sensor_defaults(obs_data_t *settings)
@@ -43,7 +44,7 @@ void* read_bpm_thread(struct pulse_sensor *sensor) {
 		return;
 	}
 
-	while (true) {
+	while (obs_source_showing(sensor->source)) {
 		read_serial_data(&sensor->sensor_data->bpm, BPM_TAG);
 
 		read_serial_data(&sensor->sensor_data->signal, SIGNAL_TAG);
@@ -79,8 +80,8 @@ static void pulse_sensor_hide(void *data)
 {
 	struct pulse_sensor *sensor = data;
 
-	if (pthread_cancel(sensor->thread)) {
-		blog(LOG_WARNING, "Failed to cancel serial thread.");
+	if (pthread_join(sensor->thread, NULL)) {
+		blog(LOG_WARNING, "Failed to join serial thread.");
 	}
 }
 
@@ -101,8 +102,8 @@ static void pulse_sensor_destroy(void *data)
 {
 	struct pulse_sensor *sensor = data;
 	
-	if (pthread_cancel(sensor->thread)) {
-		blog(LOG_WARNING, "Failed to cancel serial thread.");
+	if (pthread_join(sensor->thread, NULL)) {
+		blog(LOG_WARNING, "Failed to join serial thread.");
 	}
 	
 	bfree(sensor->sensor_data);
@@ -134,7 +135,6 @@ static void pulse_sensor_render(void *data, gs_effect_t *effect)
 	obs_source_video_render(sensor->textSource);
 }
 
-
 static void pulse_sensor_tick(void *data, float seconds)
 {
 	struct pulse_sensor *sensor = data;
@@ -150,21 +150,32 @@ static void pulse_sensor_tick(void *data, float seconds)
 		char bpmBuffer[1024];
 		char signalBuffer[1024];
 		char IBIBuffer[1024];
-
+		char bpmTopRecordBuffer[1024];
+		
 		itoa(sensor->sensor_data->bpm, bpmBuffer, 10);
+		itoa(sensor->sensor_data->bpmTopRecord, bpmTopRecordBuffer, 10);
+		
+		snprintf(bpmBuffer, sizeof(bpmBuffer), "%s\r\n%s", bpmBuffer, bpmTopRecordBuffer);
 
-		// TODO: Make use of these two. Let's only print the BPM for now.
-		itoa(sensor->sensor_data->signal, signalBuffer, 10);
-		itoa(sensor->sensor_data->IBI, IBIBuffer, 10);
+		if (sensor->sensor_data->bpm > sensor->sensor_data->bpmTopRecord) {
+			sensor->sensor_data->bpmTopRecord = sensor->sensor_data->bpm;
+		}
 
-		if (sensor->sensor_data->bpm == 0  &&
-			sensor->sensor_data->signal == 0 &&
-			sensor->sensor_data->IBI == 0) { 
+		bool noSensorData = sensor->sensor_data->bpm == 0 && 
+							sensor->sensor_data->signal == 0 &&
+							sensor->sensor_data->IBI == 0;
+
+		// Sometimes, when putting the sensor away, the BPM still goes up to > ~200.
+		// It's pretty unlikely for the user to have that kind of heart rate, at least in this context.
+		// Added this BPM limit to indicate that instead of giving false values.
+		bool abovePulseLimit = sensor->sensor_data->bpm > MAX_BPM;
+
+		if (noSensorData || abovePulseLimit)  { 
 			obs_data_set_string(sensor->textSource->context.settings, "text", "N/A");
+			sensor->sensor_data->bpmTopRecord = 0;
 		}
 		else {
 			obs_data_set_string(sensor->textSource->context.settings, "text", bpmBuffer);
-			
 		}
 		
 		obs_source_update(sensor->textSource, sensor->textSource->context.settings);		
@@ -210,7 +221,7 @@ static struct obs_source_info pulse_sensor_info = {
 
 
 OBS_DECLARE_MODULE()
-OBS_MODULE_USE_DEFAULT_LOCALE("pulse_sensor", "en-US")
+OBS_MODULE_USE_DEFAULT_LOCALE("win-pulse-sensor-amped", "en-US")
 
 bool obs_module_load(void)
 {
