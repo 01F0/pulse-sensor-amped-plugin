@@ -2,9 +2,9 @@
 
 HANDLE comPortFile;
 
-bool open_com_port()
+bool open_com_port(const char* comPort)
 {
-	comPortFile = CreateFile(_T("COM4"),
+	comPortFile = CreateFileA(comPort,
 		GENERIC_READ | GENERIC_WRITE,
 		0,
 		NULL,
@@ -51,7 +51,7 @@ bool close_com_port()
 	return CloseHandle(comPortFile);
 }
 
-bool read_serial_data(int *data, char tag)
+bool read_serial_data(volatile int *data, char tag)
 {
 	char readBuffer[1];
 	DWORD numberOfBytesRead;

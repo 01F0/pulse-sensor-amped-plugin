@@ -11,7 +11,7 @@
 #define IBI_TAG 'Q'
 #define MAX_BPM 210
 
-bool open_com_port();
+bool open_com_port(const char* comPort);
 
 bool close_com_port();
 
