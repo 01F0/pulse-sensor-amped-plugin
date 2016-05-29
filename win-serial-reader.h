@@ -5,16 +5,17 @@
 #include <windows.h>
 #include <tchar.h>
 #include <stdbool.h>
+#include <stdlib.h>
 
 #define BPM_TAG 'B'
 #define SIGNAL_TAG 'S'
 #define IBI_TAG 'Q'
 #define MAX_BPM 210
 
-bool open_com_port(const char* comPort);
+HANDLE open_com_port(const char* comPort);
 
-bool close_com_port();
+bool close_com_port(HANDLE comPortFile);
 
-bool read_serial_data(int *data, char tag);
+bool read_serial_data(HANDLE comPortFile, volatile int *data, char tag);
 
 #endif

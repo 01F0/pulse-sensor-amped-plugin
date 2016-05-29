@@ -16,7 +16,7 @@ struct pulse_sensor {
 	struct pulse_data *sensor_data;
 	pthread_t thread;
 	bool showTopHeartRate;
-	char *comPort;
+	const char *comPort;
 	volatile bool updateThread;
 };
 
@@ -29,21 +29,23 @@ struct pulse_data {
 };
 
 void* read_bpm_thread(struct pulse_sensor *sensor) {
+	HANDLE port = open_com_port(sensor->comPort);
 
-	if (!open_com_port(sensor->comPort)) {
+	if (port == NULL) {
+		sensor->updateThread = false;
 		blog(LOG_WARNING, "Failed to open COM port.");
 		return NULL;
 	}
 
 	while (sensor->updateThread) {
-		read_serial_data(&sensor->sensor_data->bpm, BPM_TAG);
+		read_serial_data(port, &sensor->sensor_data->bpm, BPM_TAG);
 
-		read_serial_data(&sensor->sensor_data->signal, SIGNAL_TAG);
+		read_serial_data(port, &sensor->sensor_data->signal, SIGNAL_TAG);
 
-		read_serial_data(&sensor->sensor_data->IBI, IBI_TAG);
+		read_serial_data(port, &sensor->sensor_data->IBI, IBI_TAG);
 	}
 
-	if (!close_com_port()) {
+	if (!close_com_port(port)) {
 		blog(LOG_WARNING, "Failed to close COM port.");
 	}
 
@@ -57,13 +59,12 @@ static void start_thread(struct pulse_sensor *sensor) {
 	}
 }
 
-static void stop_thread(struct pulse_sensor *sensor) {
+static void stop_serial_thread(struct pulse_sensor *sensor) {
 	sensor->updateThread = false;
 	if (pthread_join(sensor->thread, NULL)) {
 		blog(LOG_WARNING, "Failed to join serial thread.");
 	}
 }
-
 
 static void pulse_sensor_defaults(obs_data_t *settings) {
 	obs_data_set_default_bool(settings, "unload", true);
@@ -77,7 +78,6 @@ static void *pulse_sensor_create(obs_data_t *settings, obs_source_t *source) {
 	sensor->source = source;
 	const char *text_source_id = "text_ft2_source\0";
 	sensor->comPort = obs_data_get_string(settings, "comport");
-	start_thread(sensor);
 
 	sensor->textSource = obs_source_create(text_source_id, text_source_id, settings, NULL);
 	obs_source_add_active_child(sensor->source, sensor->textSource);
@@ -117,6 +117,7 @@ static void pulse_sensor_tick(void *data, float seconds) {
 
 		itoa(sensor->sensor_data->bpm, bpmBuffer, 10);
 		itoa(sensor->sensor_data->bpmTopRecord, bpmTopRecordBuffer, 10);
+		
 
 		if (sensor->showTopHeartRate) {
 			snprintf(bpmBuffer, sizeof(bpmBuffer), "%s\r\n%s", bpmBuffer, bpmTopRecordBuffer);
@@ -135,7 +136,7 @@ static void pulse_sensor_tick(void *data, float seconds) {
 		// Added this BPM limit to indicate that instead of giving false values.
 		bool abovePulseLimit = sensor->sensor_data->bpm > MAX_BPM;
 
-		if (noSensorData || abovePulseLimit) {
+		if (noSensorData || abovePulseLimit || !sensor->updateThread) {
 			obs_data_set_string(sensor->textSource->context.settings, "text", "N/A");
 			sensor->sensor_data->bpmTopRecord = 0;
 		}
@@ -158,20 +159,16 @@ static const char *pulse_sensor_amped_get_name(void *unused) {
 	return obs_module_text("PulseSensorName");
 }
 
-static void pulse_sensor_load(struct pulse_sensor *sensor) {
-	
-}
-
 static void pulse_sensor_show(void *data) {
 
 	struct pulse_sensor *sensor = data;
-	pulse_sensor_load(sensor);
+	start_thread(sensor);
 }
 
 static void pulse_sensor_update(void *data, obs_data_t *settings) {
 	struct pulse_sensor *sensor = data;
 	
-	stop_thread(sensor);
+	stop_serial_thread(sensor);
 
 	obs_data_set_string(sensor->textSource->context.settings, "text", "N/A");
 
@@ -181,16 +178,10 @@ static void pulse_sensor_update(void *data, obs_data_t *settings) {
 	start_thread(sensor);
 }
 
-static void pulse_sensor_hide(void *data) {
-	struct pulse_sensor *sensor = data;
-
-	stop_thread(sensor);
-}
-
 static void pulse_sensor_destroy(void *data) {
 	struct pulse_sensor *sensor = data;
 	
-	stop_thread(sensor);
+	stop_serial_thread(sensor);
 	
 	bfree(sensor->sensor_data);
 	sensor->sensor_data = NULL;
@@ -207,9 +198,9 @@ static obs_properties_t *pulse_sensor_properties(void *unused) {
 
 	obs_properties_t *props = obs_source_properties(sensor->textSource);
 
-	obs_properties_add_text(props, "comport", "COM port connected to Pulse Sensor Amped", OBS_TEXT_DEFAULT);
+	obs_properties_add_text(props, "comport", "COM port", OBS_TEXT_DEFAULT);
 
-	obs_properties_add_bool(props, "topheartrate", "Show heart rate record.");
+	obs_properties_add_bool(props, "topheartrate", "Show top heart rate record");
 
 	return props;
 }
@@ -224,7 +215,6 @@ static struct obs_source_info pulse_sensor_info = {
 	.update         = pulse_sensor_update,
 	.get_defaults   = pulse_sensor_defaults,
 	.show           = pulse_sensor_show,
-	.hide           = pulse_sensor_hide,
 	.get_width      = pulse_sensor_getwidth,
 	.get_height     = pulse_sensor_getheight,
 	.video_render   = pulse_sensor_render,

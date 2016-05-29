@@ -1,11 +1,9 @@
 #include "win-serial-reader.h"
 
-HANDLE comPortFile;
-
-bool open_com_port(const char* comPort)
-{
+HANDLE open_com_port(const char* comPort) {
+	HANDLE comPortFile;
 	comPortFile = CreateFileA(comPort,
-		GENERIC_READ | GENERIC_WRITE,
+		GENERIC_READ,
 		0,
 		NULL,
 		OPEN_EXISTING,
@@ -13,7 +11,7 @@ bool open_com_port(const char* comPort)
 		NULL);
 
 	if (INVALID_HANDLE_VALUE == comPortFile) {
-		return false;
+		return NULL;
 	}
 
 	DCB dcbPort;
@@ -21,15 +19,15 @@ bool open_com_port(const char* comPort)
 	dcbPort.DCBlength = sizeof(dcbPort);
 
 	if (!GetCommState(comPortFile, &dcbPort)) {
-		return false;
+		return NULL;
 	}
 
 	if (!BuildCommDCB(L"baud=115200 parity=n data=8 stop=1", &dcbPort)) {
-		return false;
+		return NULL;
 	}
 
 	if (!SetCommState(comPortFile, &dcbPort)) {
-		return false;
+		return NULL;
 	}
 
 	COMMTIMEOUTS timeoutSettings;
@@ -40,19 +38,17 @@ bool open_com_port(const char* comPort)
 	timeoutSettings.WriteTotalTimeoutConstant = 1;
 
 	if (!SetCommTimeouts(comPortFile, &timeoutSettings)) {
-		return false;
+		return NULL;
 	}
 
-	return true;
+	return comPortFile;
 }
 
-bool close_com_port()
-{
+bool close_com_port(HANDLE comPortFile) {
 	return CloseHandle(comPortFile);
 }
 
-bool read_serial_data(volatile int *data, char tag)
-{
+bool read_serial_data(HANDLE comPortFile, volatile int *data, char tag) {
 	char readBuffer[1];
 	DWORD numberOfBytesRead;
 	int charIndexCounter = 0;
